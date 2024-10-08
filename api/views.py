@@ -1,11 +1,12 @@
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.decorators import api_view
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import authenticate
-from .serializers import RegisterSerializer, LoginSerializer
+from .serializers import RegisterSerializer, LoginSerializer, ProjectSerializer
 from rest_framework.views import APIView
-
+from rest_framework import generics
+from rest_framework.permissions import IsAuthenticated
+from .models import Project
 
 
 # @api_view(["GET"])
@@ -116,3 +117,37 @@ class Logout(APIView):
         return Response(
             {"error": "User is not authenticated"}, status=status.HTTP_401_UNAUTHORIZED
         )
+
+
+class ProjectCreateView(generics.CreateAPIView):
+    queryset = Project.objects.all()
+    serializer_class = ProjectSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class ProjectListView(
+    generics.ListAPIView,
+):
+    queryset = Project.objects.all()
+    serializer_class = ProjectSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return self.queryset.filter(team_members=self.request.user.profile)
+
+
+class ProjectDetailView(generics.RetrieveAPIView):
+    queryset = Project.objects.all()
+    serializer_class = ProjectSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class ProjectUpdateView(generics.UpdateAPIView):
+    queryset = Project.objects.all()
+    serializer_class = ProjectSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class ProjectDeleteView(generics.DestroyAPIView):
+    queryset = Project.objects.all()
+    permission_classes = [IsAuthenticated]

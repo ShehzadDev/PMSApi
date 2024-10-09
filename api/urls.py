@@ -16,9 +16,9 @@ urlpatterns = [
     path("api/register/", Register.as_view(), name="register"),
     path("api/login/", Login.as_view(), name="login"),
     path("api/logout/", Logout.as_view(), name="logout"),
-    path("api/projects/create", ProjectCreateView.as_view(), name="project-create"),
     path("api/projects/", ProjectListView.as_view(), name="project-list"),
-    path("api/projects/<int:pk>/", ProjectDetailView.as_view(), name="project-detail"),
-    path("api/projects/<int:pk>/", ProjectUpdateView.as_view(), name="project-update"),
-    path("api/projects/<int:pk>/", ProjectDeleteView.as_view(), name="project-delete"),
+    path("api/projects/create/", ProjectCreateView.as_view(), name="project-create"),
+    path("api/projects/<int:pk>/", ProjectDetailView.as_view(), name="project-detail"),  
+    path("api/projects/<int:pk>/update/", ProjectUpdateView.as_view(), name="project-update"),
+    path("api/projects/<int:pk>/delete/", ProjectDeleteView.as_view(), name="project-delete"),
 ]

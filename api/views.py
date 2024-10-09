@@ -1,11 +1,21 @@
-from rest_framework import status, generics, viewsets
+from rest_framework import status, viewsets
 from rest_framework.response import Response
-from rest_framework.authtoken.models import Token
+from rest_framework.decorators import action, permission_classes
 from rest_framework.permissions import IsAuthenticated
-from django.contrib.auth import authenticate
 from rest_framework.views import APIView
-from .serializers import RegisterSerializer, LoginSerializer, ProjectSerializer
-from .models import Project
+from django.contrib.auth import authenticate
+from rest_framework.authtoken.models import Token
+from .models import Task, Profile, Project, Document, Comment
+from .serializers import (
+    RegisterSerializer,
+    LoginSerializer,
+    ProfileSerializer,
+    ProjectSerializer,
+    TaskSerializer,
+    DocumentSerializer,
+    CommentSerializer,
+    AssignTaskSerializer,
+)
 
 
 class APIOverview(APIView):
@@ -64,6 +74,20 @@ class Logout(APIView):
         )
 
 
+class UserProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            profile = Profile.objects.get(user=request.user)
+            serializer = ProfileSerializer(profile)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Profile.DoesNotExist:
+            return Response(
+                {"error": "Profile not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+
 class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.all()
     serializer_class = ProjectSerializer
@@ -73,33 +97,64 @@ class ProjectViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(team_members=self.request.user.profile)
 
 
-# class ProjectCreateView(generics.CreateAPIView):
-#     queryset = Project.objects.all()
-#     serializer_class = ProjectSerializer
-#     permission_classes = [IsAuthenticated]
+class TaskViewSet(viewsets.ModelViewSet):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return self.queryset.filter(project__team_members=self.request.user.profile)
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    def assign(self, request, pk=None):
+        try:
+            task = self.get_object()
+        except Task.DoesNotExist:
+            return Response(
+                {"error": "Task not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        if request.user.profile.role != "manager":
+            return Response(
+                {"error": "You do not have permission to assign tasks."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = AssignTaskSerializer(data=request.data)
+        if serializer.is_valid():
+            team_member_id = serializer.validated_data["team_member_id"]
+
+            try:
+                team_member_profile = Profile.objects.get(id=team_member_id)
+            except Profile.DoesNotExist:
+                return Response(
+                    {"error": "Profile not found for the given team member."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            task.assignee = team_member_profile
+            task.save()
+
+            return Response(
+                {"message": "Task assigned successfully."}, status=status.HTTP_200_OK
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# class ProjectListView(generics.ListAPIView):
-#     queryset = Project.objects.all()
-#     serializer_class = ProjectSerializer
+class DocumentViewSet(viewsets.ModelViewSet):
+    queryset = Document.objects.all()
+    serializer_class = DocumentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return self.queryset.filter(project__team_members=self.request.user.profile)
+
+
+# class CommentViewSet(viewsets.ModelViewSet):
+#     queryset = Comment.objects.all()
+#     serializer_class = CommentSerializer
 #     permission_classes = [IsAuthenticated]
 
 #     def get_queryset(self):
-#         return self.queryset.filter(team_members=self.request.user.profile)
-
-
-# class ProjectDetailView(generics.RetrieveAPIView):
-#     queryset = Project.objects.all()
-#     serializer_class = ProjectSerializer
-#     permission_classes = [IsAuthenticated]
-
-
-# class ProjectUpdateView(generics.UpdateAPIView):
-#     queryset = Project.objects.all()
-#     serializer_class = ProjectSerializer
-#     permission_classes = [IsAuthenticated]
-
-
-# class ProjectDeleteView(generics.DestroyAPIView):
-#     queryset = Project.objects.all()
-#     permission_classes = [IsAuthenticated]
+#         return self.queryset.filter(project__team_members=self.request.user.profile)

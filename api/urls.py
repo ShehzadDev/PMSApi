@@ -10,6 +10,8 @@ from .views import (
     DocumentViewSet,
     CommentViewSet,
     UserProfileView,
+    TimelineEventListView,
+    TimelineEventDetailView,
 )
 
 router = DefaultRouter()
@@ -24,5 +26,11 @@ urlpatterns = [
     path("api/login/", Login.as_view(), name="login"),
     path("api/logout/", Logout.as_view(), name="logout"),
     path("api/profile/", UserProfileView.as_view(), name="user-profile"),
+    path("api/timeline/", TimelineEventListView.as_view(), name="timeline-events-list"),
+    path(
+        "api/timeline/<int:project_id>/",
+        TimelineEventDetailView.as_view(),
+        name="timeline-events-detail",
+    ),
     path("api/", include(router.urls)),
 ]

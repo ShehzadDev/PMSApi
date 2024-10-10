@@ -2,6 +2,14 @@ from django.db import models
 from django.contrib.auth.models import User
 
 
+class TimeStampedModel(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
 class Profile(models.Model):
     ROLE_CHOICES = [
         ("manager", "Manager"),
@@ -26,6 +34,16 @@ class Project(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class TimelineEvent(TimeStampedModel):
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="timeline_events"
+    )
+    event_description = models.TextField()
+
+    def __str__(self):
+        return f"Event for {self.project.title}: {self.event_description[:50]}"
 
 
 class Task(models.Model):

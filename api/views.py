@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
-from .models import Task, Profile, Project, Document, Comment
+from .models import Task, Profile, Project, Document, Comment, TimelineEvent
 from .serializers import (
     RegisterSerializer,
     LoginSerializer,
@@ -15,7 +15,9 @@ from .serializers import (
     CommentSerializer,
     AssignTaskSerializer,
     UserViewSerializer,
+    TimelineEventSerializer,
 )
+from rest_framework import generics
 
 
 class APIOverview(APIView):
@@ -133,6 +135,23 @@ class ProjectViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(team_members=self.request.user.profile)
 
 
+class TimelineEventListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = TimelineEventSerializer
+
+    def get_queryset(self):
+        return TimelineEvent.objects.all()
+
+
+class TimelineEventDetailView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = TimelineEventSerializer
+
+    def get_queryset(self):
+        project_id = self.kwargs["project_id"]
+        return TimelineEvent.objects.filter(project_id=project_id)
+
+
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
@@ -194,3 +213,11 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return self.queryset.filter(project__team_members=self.request.user.profile)
+
+
+class TimelineEventListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = TimelineEventSerializer
+
+    def get_queryset(self):
+        return TimelineEvent.objects.all()  # Retrieve all timeline events

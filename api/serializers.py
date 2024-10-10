@@ -4,28 +4,65 @@ from .models import Project, Task, Document, Comment, Profile
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    profile_picture = serializers.ImageField(required=False)
+    role = serializers.ChoiceField(choices=Profile.ROLE_CHOICES)
+    contact_number = serializers.CharField(required=False, max_length=15)
+
     class Meta:
         model = User
-        fields = ["username", "password", "email"]
+        fields = [
+            "username",
+            "password",
+            "email",
+            "profile_picture",
+            "role",
+            "contact_number",
+        ]
         extra_kwargs = {"password": {"write_only": True}}
 
     def create(self, validated_data):
+        profile_picture = validated_data.pop("profile_picture", None)
+        role = validated_data.pop("role")
+        contact_number = validated_data.pop("contact_number", None)
+
         user = User(**validated_data)
         user.set_password(validated_data["password"])
         user.save()
+
+        Profile.objects.create(
+            user=user,
+            profile_picture=profile_picture,
+            role=role,
+            contact_number=contact_number,
+        )
+
         return user
+
+
+class UserViewSerializer(serializers.ModelSerializer):
+    profile_picture = serializers.ImageField(
+        source="profile.profile_picture", read_only=True
+    )
+    role = serializers.CharField(source="profile.role", read_only=True)
+    contact_number = serializers.CharField(
+        source="profile.contact_number", read_only=True
+    )
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "email",
+            "profile_picture",
+            "role",
+            "contact_number",
+        ]
 
 
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField()
-
-
-class ProfileSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Profile
-        fields = ["user", "profile_picture", "role", "contact_number"]
-        depth = 1
 
 
 class ProjectSerializer(serializers.ModelSerializer):
@@ -55,7 +92,7 @@ class DocumentSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-# class CommentSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Comment
-#         fields = "__all__"
+class CommentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Comment
+        fields = "__all__"

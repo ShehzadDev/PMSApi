@@ -9,22 +9,49 @@ from .models import Task, Profile, Project, Document, Comment
 from .serializers import (
     RegisterSerializer,
     LoginSerializer,
-    ProfileSerializer,
     ProjectSerializer,
     TaskSerializer,
     DocumentSerializer,
     CommentSerializer,
     AssignTaskSerializer,
+    UserViewSerializer,
 )
 
 
 class APIOverview(APIView):
     def get(self, request):
         api_urls = {
-            "Register": "/register/",
-            "Login": "/login/",
-            "Logout": "/logout/",
-            "Projects": "/projects/",
+            "User Authentication": {
+                "Register": "/api/register/",
+                "Login": "/api/login/",
+                "Logout": "/api/logout/",
+                "Profile": "/api/profile/",
+            },
+            "Project Management": {
+                "List Projects": "/api/projects/",
+                "Create Project": "/api/projects/",
+                "Retrieve/Update/Delete Project": "/api/projects/{id}/",
+                "Project Timeline": "/api/projects/{id}/timeline/",
+            },
+            "Task Management": {
+                "List Tasks": "/api/tasks/",
+                "Create Task": "/api/tasks/",
+                "Retrieve/Update/Delete Task": "/api/tasks/{id}/",
+                "Assign Task": "/api/tasks/{id}/assign/",
+            },
+            "Document Management": {
+                "List Documents": "/api/documents/",
+                "Upload Document": "/api/documents/",
+                "Retrieve/Update/Delete Document": "/api/documents/{id}/",
+            },
+            "Comment Management": {
+                "List Comments": "/api/comments/",
+                "Create Comment": "/api/comments/",
+                "Retrieve/Update/Delete Comment": "/api/comments/{id}/",
+            },
+            "Timeline Events": {
+                "List Timeline Events": "/api/timeline/",
+            },
         }
         return Response(api_urls)
 
@@ -34,16 +61,39 @@ class Register(APIView):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
+
             token, created = Token.objects.get_or_create(user=user)
+
+            profile = Profile.objects.get(user=user)
+
             return Response(
                 {
                     "token": token.key,
                     "username": user.username,
                     "email": user.email,
+                    "profile_picture": (
+                        profile.profile_picture.url if profile.profile_picture else None
+                    ),
+                    "role": profile.role,
+                    "contact_number": profile.contact_number,
                 },
                 status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            profile = Profile.objects.get(user=request.user)
+            serializer = UserViewSerializer(profile.user)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Profile.DoesNotExist:
+            return Response(
+                {"error": "Profile not found"}, status=status.HTTP_404_NOT_FOUND
+            )
 
 
 class Login(APIView):
@@ -72,20 +122,6 @@ class Logout(APIView):
         return Response(
             {"error": "User is not authenticated"}, status=status.HTTP_401_UNAUTHORIZED
         )
-
-
-class UserProfileView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        try:
-            profile = Profile.objects.get(user=request.user)
-            serializer = ProfileSerializer(profile)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except Profile.DoesNotExist:
-            return Response(
-                {"error": "Profile not found"}, status=status.HTTP_404_NOT_FOUND
-            )
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
@@ -151,10 +187,10 @@ class DocumentViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(project__team_members=self.request.user.profile)
 
 
-# class CommentViewSet(viewsets.ModelViewSet):
-#     queryset = Comment.objects.all()
-#     serializer_class = CommentSerializer
-#     permission_classes = [IsAuthenticated]
+class CommentViewSet(viewsets.ModelViewSet):
+    queryset = Comment.objects.all()
+    serializer_class = CommentSerializer
+    permission_classes = [IsAuthenticated]
 
-#     def get_queryset(self):
-#         return self.queryset.filter(project__team_members=self.request.user.profile)
+    def get_queryset(self):
+        return self.queryset.filter(project__team_members=self.request.user.profile)

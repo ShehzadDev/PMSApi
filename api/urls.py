@@ -16,7 +16,7 @@ router = DefaultRouter()
 router.register(r"projects", ProjectViewSet, basename="projects")
 router.register(r"tasks", TaskViewSet, basename="tasks")
 router.register(r"documents", DocumentViewSet, basename="document")
-# router.register(r"comments", CommentViewSet, basename="comment")
+router.register(r"comments", CommentViewSet, basename="comment")
 
 urlpatterns = [
     path("api/", APIOverview.as_view(), name="api-overview"),

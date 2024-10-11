@@ -87,6 +87,10 @@ class TimelineEventSerializer(serializers.ModelSerializer):
 
 
 class TaskSerializer(serializers.ModelSerializer):
+    assignee = serializers.PrimaryKeyRelatedField(
+        queryset=Profile.objects.all(), required=False
+    )
+
     class Meta:
         model = Task
         fields = "__all__"
@@ -112,7 +116,7 @@ class CommentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Comment
-        fields = ["id", "text", "author", "created_at", "task", "project"]
+        fields = "__all__"
 
 
 class NotificationSerializer(serializers.ModelSerializer):

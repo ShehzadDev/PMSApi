@@ -46,8 +46,7 @@ class Task(models.Model):
         ("review", "Review"),
         ("working", "Working"),
         ("awaiting_release", "Awaiting Release"),
-        ("waiting_qa", "Waiting QA"),
-        ("done", "Done"),
+        ("waiting_qa", "Done"),
     ]
     title = models.CharField(max_length=100)
     description = models.TextField()

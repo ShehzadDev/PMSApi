@@ -56,10 +56,11 @@ def create_task_timeline_event(sender, instance, created, **kwargs):
 @receiver(post_save, sender=Task)
 def create_task_notification(sender, instance, created, **kwargs):
     if created:
-        Notification.objects.create(
-            user=instance.assignee,
-            message=f"You have been assigned a new task: {instance.title}",
-        )
+        if instance.assignee:
+            Notification.objects.create(
+                user=instance.assignee.user,
+                message=f"You have been assigned a new task: {instance.title}",
+            )
 
 
 @receiver(post_save, sender=Document)
@@ -67,12 +68,12 @@ def create_document_timeline_event(sender, instance, created, **kwargs):
     if created:
         TimelineEvent.objects.create(
             project=instance.project,
-            event_description=f"Document '{instance.title}' has been uploaded.",
+            event_description=f"Document '{instance.name}' has been uploaded.",
         )
     else:
         TimelineEvent.objects.create(
             project=instance.project,
-            event_description=f"Document '{instance.title}' has been updated.",
+            event_description=f"Document '{instance.name}' has been updated.",
         )
 
 
@@ -81,7 +82,7 @@ def create_document_notification(sender, instance, created, **kwargs):
     for member in instance.project.team_members.all():
         Notification.objects.create(
             user=member,
-            message=f"A document has been {'uploaded' if created else 'updated'}: {instance.title}",
+            message=f"A document has been {'uploaded' if created else 'updated'}: {instance.name}",
         )
 
 
@@ -89,14 +90,16 @@ def create_document_notification(sender, instance, created, **kwargs):
 def create_comment_timeline_event(sender, instance, created, **kwargs):
     TimelineEvent.objects.create(
         project=instance.task.project,
-        event_description=f"Comment '{instance.content}' has been {'added' if created else 'updated'}.",
+        event_description=f"Comment '{instance.text}' has been {'added' if created else 'updated'}.",
     )
 
 
 @receiver(post_save, sender=Comment)
 def create_comment_notification(sender, instance, created, **kwargs):
+    user = instance.task.assignee.user
+
     Notification.objects.create(
-        user=instance.task.assignee,
+        user=user,
         message=f"A comment has been {'added to' if created else 'updated in'} your task: {instance.task.title}",
     )
 

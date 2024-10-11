@@ -170,7 +170,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return self.queryset.filter(project__team_members=self.request.user.profile)
+        return self.queryset.filter(project__team_members=self.request.user)
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def assign(self, request, pk=None):
@@ -219,7 +219,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return self.queryset.filter(project__team_members=self.request.user.profile)
+        return self.queryset.filter(project__team_members=self.request.user)
 
 
 class CommentViewSet(viewsets.ModelViewSet):
@@ -228,7 +228,7 @@ class CommentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return self.queryset.filter(project__team_members=self.request.user.profile)
+        return self.queryset.filter(project__team_members=self.request.user)
 
 
 class TimelineEventListView(generics.ListAPIView):

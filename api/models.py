@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.conf import settings
 
 
 class TimeStampedModel(models.Model):
@@ -26,24 +27,17 @@ class Profile(models.Model):
 
 
 class Project(models.Model):
-    title = models.CharField(max_length=100)
+    title = models.CharField(max_length=255)
     description = models.TextField()
     start_date = models.DateField()
     end_date = models.DateField()
-    team_members = models.ManyToManyField(Profile)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    team_members = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, related_name="projects"
+    )
 
     def __str__(self):
         return self.title
-
-
-class TimelineEvent(TimeStampedModel):
-    project = models.ForeignKey(
-        Project, on_delete=models.CASCADE, related_name="timeline_events"
-    )
-    event_description = models.TextField()
-
-    def __str__(self):
-        return f"Event for {self.project.title}: {self.event_description[:50]}"
 
 
 class Task(models.Model):
@@ -87,3 +81,22 @@ class Comment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.author.username} on {self.task.title}"
+
+
+class TimelineEvent(TimeStampedModel):
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="timeline_events"
+    )
+    event_description = models.TextField()
+
+    def __str__(self):
+        return f"Event for {self.project.title}: {self.event_description[:50]}"
+
+
+class Notification(TimeStampedModel):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Notification for {self.user.username}: {self.message}"

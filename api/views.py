@@ -1,11 +1,19 @@
-from rest_framework import status, viewsets
+from rest_framework import status, viewsets, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 from rest_framework.authtoken.models import Token
-from .models import Task, Profile, Project, Document, Comment, TimelineEvent
+from .models import (
+    Task,
+    Profile,
+    Project,
+    Document,
+    Comment,
+    TimelineEvent,
+    Notification,
+)
 from .serializers import (
     RegisterSerializer,
     LoginSerializer,
@@ -16,6 +24,7 @@ from .serializers import (
     AssignTaskSerializer,
     UserViewSerializer,
     TimelineEventSerializer,
+    NotificationSerializer,
 )
 from rest_framework import generics
 
@@ -132,7 +141,10 @@ class ProjectViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return self.queryset.filter(team_members=self.request.user.profile)
+        return self.queryset.filter(team_members=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
 
 class TimelineEventListView(generics.ListAPIView):
@@ -177,13 +189,17 @@ class TaskViewSet(viewsets.ModelViewSet):
 
         serializer = AssignTaskSerializer(data=request.data)
         if serializer.is_valid():
-            team_member_id = serializer.validated_data["team_member_id"]
+            team_member_id = serializer.validated_data.get("team_member_id")
 
             try:
-                team_member_profile = Profile.objects.get(id=team_member_id)
+                team_member_profile = Profile.objects.get(
+                    id=team_member_id, project__team_members=task.project
+                )
             except Profile.DoesNotExist:
                 return Response(
-                    {"error": "Profile not found for the given team member."},
+                    {
+                        "error": "Profile not found for the given team member or they are not part of the project."
+                    },
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
@@ -220,4 +236,25 @@ class TimelineEventListView(generics.ListAPIView):
     serializer_class = TimelineEventSerializer
 
     def get_queryset(self):
-        return TimelineEvent.objects.all()  # Retrieve all timeline events
+        return TimelineEvent.objects.all()
+
+
+class NotificationListView(generics.ListAPIView):
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user)
+
+
+class MarkNotificationReadView(generics.UpdateAPIView):
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        return generics.get_object_or_404(
+            Notification, id=self.kwargs["notification_id"], user=self.request.user
+        )
+
+    def perform_update(self, serializer):
+        serializer.save(is_read=True)

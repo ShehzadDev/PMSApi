@@ -12,6 +12,8 @@ from .views import (
     UserProfileView,
     TimelineEventListView,
     TimelineEventDetailView,
+    NotificationListView,
+    MarkNotificationReadView,
 )
 
 router = DefaultRouter()
@@ -27,6 +29,14 @@ urlpatterns = [
     path("api/logout/", Logout.as_view(), name="logout"),
     path("api/profile/", UserProfileView.as_view(), name="user-profile"),
     path("api/timeline/", TimelineEventListView.as_view(), name="timeline-events-list"),
+    path(
+        "api/notifications/", NotificationListView.as_view(), name="notification-list"
+    ),
+    path(
+        "api/notifications/<int:notification_id>/mark_read/",
+        MarkNotificationReadView.as_view(),
+        name="mark-notification-read",
+    ),
     path(
         "api/timeline/<int:project_id>/",
         TimelineEventDetailView.as_view(),

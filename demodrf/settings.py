@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+from api.enums import UserRole, TaskStatus
 import os
 import dj_database_url
 
@@ -41,6 +42,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework.authtoken",
+    "rest_framework_simplejwt",
     "api",
 ]
 
@@ -139,11 +141,18 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 #     }
 # }
 
-DATABASES = {"default": dj_database_url.config(default=os.getenv("DATABASE_URL"))}
+DATABASES = {
+    "default": dj_database_url.config(default=os.getenv("DATABASE_URL")),
+    # "ENGINE": "django.db.backends.postgresql",
+}
+
+print(f"DATABASE_URL: {os.getenv('DATABASE_URL')}")
+
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
@@ -152,3 +161,7 @@ REST_FRAMEWORK = {
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+
+ROLE_CHOICES = UserRole.choices()
+STATUS_CHOICES = TaskStatus.choices()

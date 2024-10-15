@@ -9,11 +9,12 @@ from .models import (
     TimelineEvent,
     Notification,
 )
+from django.conf import settings
 
 
 class RegisterSerializer(serializers.ModelSerializer):
     profile_picture = serializers.ImageField(required=False)
-    role = serializers.ChoiceField(choices=Profile.ROLE_CHOICES)
+    role = serializers.ChoiceField(choices=settings.ROLE_CHOICES)
     contact_number = serializers.CharField(required=False, max_length=15)
 
     class Meta:

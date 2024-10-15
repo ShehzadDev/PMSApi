@@ -15,6 +15,12 @@ from .views import (
     NotificationListView,
     MarkNotificationReadView,
 )
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+    TokenVerifyView,
+)
+
 
 router = DefaultRouter()
 router.register(r"projects", ProjectViewSet, basename="projects")
@@ -23,6 +29,9 @@ router.register(r"documents", DocumentViewSet, basename="document")
 router.register(r"comments", CommentViewSet, basename="comment")
 
 urlpatterns = [
+    path("api/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
+    path("api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path("api/token/verify/", TokenVerifyView.as_view(), name="token_verify"),
     path("api/", APIOverview.as_view(), name="api-overview"),
     path("api/register/", Register.as_view(), name="register"),
     path("api/login/", Login.as_view(), name="login"),

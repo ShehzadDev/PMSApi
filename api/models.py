@@ -12,14 +12,9 @@ class TimeStampedModel(models.Model):
 
 
 class Profile(models.Model):
-    ROLE_CHOICES = [
-        ("manager", "Manager"),
-        ("qa", "QA"),
-        ("developer", "Developer"),
-    ]
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     profile_picture = models.ImageField(upload_to="images/", null=True, blank=True)
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    role = models.CharField(max_length=20, choices=settings.ROLE_CHOICES)
     contact_number = models.CharField(max_length=15)
 
     def __str__(self):
@@ -41,16 +36,9 @@ class Project(models.Model):
 
 
 class Task(models.Model):
-    STATUS_CHOICES = [
-        ("open", "Open"),
-        ("review", "Review"),
-        ("working", "Working"),
-        ("awaiting_release", "Awaiting Release"),
-        ("waiting_qa", "Done"),
-    ]
     title = models.CharField(max_length=100)
     description = models.TextField()
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    status = models.CharField(max_length=20, choices=settings.STATUS_CHOICES)
     project = models.ForeignKey(Project, on_delete=models.CASCADE)
     assignee = models.ForeignKey(
         Profile, on_delete=models.SET_NULL, null=True, blank=True

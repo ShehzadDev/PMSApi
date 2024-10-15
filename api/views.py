@@ -1,10 +1,11 @@
-from rest_framework import status, viewsets, permissions
+from rest_framework import status, viewsets, permissions, generics, serializers
 from rest_framework.response import Response
-from rest_framework.decorators import action, permission_classes
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
-from rest_framework.authtoken.models import Token
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from .models import (
     Task,
     Profile,
@@ -26,7 +27,6 @@ from .serializers import (
     TimelineEventSerializer,
     NotificationSerializer,
 )
-from rest_framework import generics
 
 
 class APIOverview(APIView):
@@ -73,13 +73,13 @@ class Register(APIView):
         if serializer.is_valid():
             user = serializer.save()
 
-            token, created = Token.objects.get_or_create(user=user)
-
+            refresh = RefreshToken.for_user(user)
             profile = Profile.objects.get(user=user)
 
             return Response(
                 {
-                    "token": token.key,
+                    "refresh": str(refresh),
+                    "access": str(refresh.access_token),
                     "username": user.username,
                     "email": user.email,
                     "profile_picture": (
@@ -94,7 +94,6 @@ class Register(APIView):
 
 
 class UserProfileView(APIView):
-    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         try:
@@ -105,34 +104,6 @@ class UserProfileView(APIView):
             return Response(
                 {"error": "Profile not found"}, status=status.HTTP_404_NOT_FOUND
             )
-
-
-class Login(APIView):
-    def post(self, request):
-        serializer = LoginSerializer(data=request.data)
-        if serializer.is_valid():
-            username = serializer.validated_data["username"]
-            password = serializer.validated_data["password"]
-            user = authenticate(username=username, password=password)
-            if user:
-                token, created = Token.objects.get_or_create(user=user)
-                return Response({"token": token.key}, status=status.HTTP_200_OK)
-            return Response(
-                {"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-class Logout(APIView):
-    def post(self, request):
-        if request.user.is_authenticated:
-            request.user.auth_token.delete()
-            return Response(
-                {"message": "Successfully logged out"}, status=status.HTTP_200_OK
-            )
-        return Response(
-            {"error": "User is not authenticated"}, status=status.HTTP_401_UNAUTHORIZED
-        )
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
@@ -152,7 +123,7 @@ class TimelineEventListView(generics.ListAPIView):
     serializer_class = TimelineEventSerializer
 
     def get_queryset(self):
-        return TimelineEvent.objects.all()
+        return TimelineEvent.objects.all().order_by("created_at")
 
 
 class TimelineEventDetailView(generics.ListAPIView):
@@ -161,7 +132,9 @@ class TimelineEventDetailView(generics.ListAPIView):
 
     def get_queryset(self):
         project_id = self.kwargs["project_id"]
-        return TimelineEvent.objects.filter(project_id=project_id)
+        return TimelineEvent.objects.filter(project_id=project_id).order_by(
+            "created_at"
+        )
 
 
 class TaskViewSet(viewsets.ModelViewSet):
@@ -170,12 +143,15 @@ class TaskViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return self.queryset.filter(project__team_members=self.request.user)
+        user = self.request.user
+        if user.profile.role == "manager":
+            return self.queryset
+        return self.queryset.filter(project__team_members=user)
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def assign(self, request, pk=None):
         try:
-            task = self.get_object()
+            task = Task.objects.get(id=pk)
         except Task.DoesNotExist:
             return Response(
                 {"error": "Task not found."}, status=status.HTTP_404_NOT_FOUND
@@ -189,26 +165,14 @@ class TaskViewSet(viewsets.ModelViewSet):
 
         serializer = AssignTaskSerializer(data=request.data)
         if serializer.is_valid():
-            team_member_id = serializer.validated_data.get("team_member_id")
-
             try:
-                team_member_profile = Profile.objects.get(
-                    id=team_member_id, project__team_members=task.project
-                )
-            except Profile.DoesNotExist:
+                serializer.assign_task(task)
                 return Response(
-                    {
-                        "error": "Profile not found for the given team member or they are not part of the project."
-                    },
-                    status=status.HTTP_404_NOT_FOUND,
+                    {"message": "Task assigned successfully."},
+                    status=status.HTTP_200_OK,
                 )
-
-            task.assignee = team_member_profile
-            task.save()
-
-            return Response(
-                {"message": "Task assigned successfully."}, status=status.HTTP_200_OK
-            )
+            except serializers.ValidationError as e:
+                return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -229,14 +193,6 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return self.queryset.filter(project__team_members=self.request.user)
-
-
-class TimelineEventListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = TimelineEventSerializer
-
-    def get_queryset(self):
-        return TimelineEvent.objects.all()
 
 
 class NotificationListView(generics.ListAPIView):

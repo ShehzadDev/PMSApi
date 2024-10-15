@@ -105,20 +105,6 @@ def create_comment_notification(sender, instance, created, **kwargs):
 
 
 @receiver(post_save, sender=Profile)
-def create_profile_timeline_event(sender, instance, created, **kwargs):
-    if created:
-        TimelineEvent.objects.create(
-            project=None,
-            event_description=f"Profile '{instance.user.username}' has been created.",
-        )
-    else:
-        TimelineEvent.objects.create(
-            project=None,
-            event_description=f"Profile '{instance.user.username}' has been updated.",
-        )
-
-
-@receiver(post_save, sender=Profile)
 def create_profile_notification(sender, instance, created, **kwargs):
     Notification.objects.create(
         user=instance.user,

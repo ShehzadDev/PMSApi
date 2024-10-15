@@ -105,6 +105,25 @@ class AssignTaskSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid team member ID.")
         return value
 
+    def assign_task(self, task):
+        team_member_id = self.validated_data["team_member_id"]
+
+        try:
+            team_member_profile = Profile.objects.get(id=team_member_id)
+
+            if not task.project.team_members.filter(id=team_member_profile.id).exists():
+                raise serializers.ValidationError(
+                    "The team member is not part of the project."
+                )
+        except Profile.DoesNotExist:
+            raise serializers.ValidationError(
+                "Profile not found for the given team member."
+            )
+
+        task.assignee = team_member_profile
+        task.save()
+        return task
+
 
 class DocumentSerializer(serializers.ModelSerializer):
     class Meta:

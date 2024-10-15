@@ -14,6 +14,7 @@ from pathlib import Path
 from api.enums import UserRole, TaskStatus
 import os
 import dj_database_url
+from datetime import timedelta
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -151,7 +152,7 @@ print(f"DATABASE_URL: {os.getenv('DATABASE_URL')}")
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.TokenAuthentication",
+        # "rest_framework.authentication.TokenAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
@@ -165,3 +166,8 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 ROLE_CHOICES = UserRole.choices()
 STATUS_CHOICES = TaskStatus.choices()
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+}

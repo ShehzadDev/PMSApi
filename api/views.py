@@ -201,4 +201,5 @@ class MarkNotificationReadView(generics.UpdateAPIView):
         )
 
     def perform_update(self, serializer):
-        serializer.save(is_read=True)
+        notification = self.get_object()
+        serializer.update(notification, {})

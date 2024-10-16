@@ -152,8 +152,14 @@ class AssignTaskSerializer(serializers.Serializer):
 class DocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
-        fields = "__all__"
-        read_only_fields = ["uploaded_by"]
+        fields = [
+            "id",
+            "name",
+            "file",
+            "version",
+            "project",
+        ]
+        read_only_fields = []
 
     def create(self, validated_data):
         user = self.context["request"].user
@@ -162,8 +168,8 @@ class DocumentSerializer(serializers.ModelSerializer):
                 "You don't have permission to upload documents."
             )
 
-        validated_data["uploaded_by"] = user
-        return super().create(validated_data)
+        document = Document.objects.create(**validated_data)
+        return document
 
     def update(self, instance, validated_data):
         user = self.context["request"].user
@@ -214,14 +220,14 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = ["id", "user", "message", "is_read", "created_at", "updated_at"]
-        read_only_fields = ["is_read", "created_at", "updated_at"]
+        read_only_fields = ["user", "is_read", "created_at", "updated_at"]
 
     def validate_message(self, value):
-        if not value:
+        if self.instance is None and not value:
             raise serializers.ValidationError("Message cannot be empty.")
         return value
 
     def update(self, instance, validated_data):
-        instance.is_read = validated_data.get("is_read", instance.is_read)
+        instance.is_read = True
         instance.save()
         return instance

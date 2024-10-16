@@ -1,3 +1,4 @@
+from .enums import UserRole
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import (
@@ -14,7 +15,7 @@ from django.conf import settings
 
 class RegisterSerializer(serializers.ModelSerializer):
     profile_picture = serializers.ImageField(required=False)
-    role = serializers.ChoiceField(choices=settings.ROLE_CHOICES)
+    role = serializers.ChoiceField(choices=UserRole.choices())
     contact_number = serializers.CharField(required=False, max_length=15)
 
     class Meta:
@@ -79,6 +80,19 @@ class ProjectSerializer(serializers.ModelSerializer):
         model = Project
         fields = "__all__"
 
+    def create(self, validated_data):
+        user = self.context["request"].user
+        validated_data["created_by"] = user
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        user = self.context["request"].user
+        if user.profile.role not in [UserRole.MANAGER.value, UserRole.QA.value]:
+            raise serializers.ValidationError(
+                "Only managers and QA can update projects."
+            )
+        return super().update(instance, validated_data)
+
 
 class TimelineEventSerializer(serializers.ModelSerializer):
     class Meta:
@@ -96,6 +110,22 @@ class TaskSerializer(serializers.ModelSerializer):
         model = Task
         fields = "__all__"
 
+    def create(self, validated_data):
+        user = self.context["request"].user
+        if user.profile.role not in [UserRole.MANAGER.value, UserRole.QA.value]:
+            raise serializers.ValidationError(
+                "You don't have permission to create tasks."
+            )
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        user = self.context["request"].user
+        if user.profile.role not in [UserRole.MANAGER.value, UserRole.QA.value]:
+            raise serializers.ValidationError(
+                "You don't have permission to update tasks."
+            )
+        return super().update(instance, validated_data)
+
 
 class AssignTaskSerializer(serializers.Serializer):
     team_member_id = serializers.IntegerField()
@@ -107,17 +137,11 @@ class AssignTaskSerializer(serializers.Serializer):
 
     def assign_task(self, task):
         team_member_id = self.validated_data["team_member_id"]
+        team_member_profile = Profile.objects.get(id=team_member_id)
 
-        try:
-            team_member_profile = Profile.objects.get(id=team_member_id)
-
-            if not task.project.team_members.filter(id=team_member_profile.id).exists():
-                raise serializers.ValidationError(
-                    "The team member is not part of the project."
-                )
-        except Profile.DoesNotExist:
+        if not task.project.team_members.filter(id=team_member_profile.id).exists():
             raise serializers.ValidationError(
-                "Profile not found for the given team member."
+                "The team member is not part of the project."
             )
 
         task.assignee = team_member_profile
@@ -129,6 +153,26 @@ class DocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = "__all__"
+        read_only_fields = ["uploaded_by"]
+
+    def create(self, validated_data):
+        user = self.context["request"].user
+        if user.profile.role not in [UserRole.MANAGER.value, UserRole.QA.value]:
+            raise serializers.ValidationError(
+                "You don't have permission to upload documents."
+            )
+
+        validated_data["uploaded_by"] = user
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        user = self.context["request"].user
+        if user.profile.role not in [UserRole.MANAGER.value, UserRole.QA.value]:
+            raise serializers.ValidationError(
+                "You don't have permission to update documents."
+            )
+
+        return super().update(instance, validated_data)
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -137,6 +181,31 @@ class CommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = "__all__"
+
+    def create(self, validated_data):
+        user = self.context["request"].user
+        if user.profile.role not in [
+            UserRole.MANAGER.value,
+            UserRole.QA.value,
+            UserRole.DEVELOPER.value,
+        ]:
+            raise serializers.ValidationError(
+                "You don't have permission to add comments."
+            )
+        validated_data["author"] = user
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        user = self.context["request"].user
+        if user.profile.role not in [
+            UserRole.MANAGER.value,
+            UserRole.QA.value,
+            UserRole.DEVELOPER.value,
+        ]:
+            raise serializers.ValidationError(
+                "You don't have permission to update comments."
+            )
+        return super().update(instance, validated_data)
 
 
 class NotificationSerializer(serializers.ModelSerializer):

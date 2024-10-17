@@ -6,6 +6,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
+from .enums import UserRole
 from .models import (
     Task,
     Profile,
@@ -108,6 +109,20 @@ class ProjectViewSet(viewsets.ModelViewSet):
     serializer_class = ProjectSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+
+        if user.profile.role == UserRole.MANAGER.value:
+            return Project.objects.all()
+        else:
+            return Project.objects.filter(team_members=user)
+
+    def perform_destroy(self, instance):
+        user = self.request.user
+        if user.profile.role != UserRole.MANAGER.value:
+            raise PermissionDenied("Only managers can delete projects.")
+        instance.delete()
+
 
 class TimelineEventListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
@@ -148,26 +163,34 @@ class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        user_profile = user.profile
+
+        if user_profile.role in [UserRole.MANAGER.value, UserRole.QA.value]:
+            return Task.objects.all()
+
+        return Task.objects.filter(assignee=user_profile)
+
+    def perform_destroy(self, instance):
+        user = self.request.user
+        if user.profile.role != UserRole.MANAGER.value:
+            raise PermissionDenied("Only managers can delete tasks.")
+        instance.delete()
+
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def assign(self, request, pk=None):
-        try:
-            task = self.get_object()
-        except Task.DoesNotExist:
-            return Response(
-                {"error": "Task not found."}, status=status.HTTP_404_NOT_FOUND
-            )
+        task = self.get_object()
+        serializer = AssignTaskSerializer(
+            task, data=request.data, context={"request": request}
+        )
 
-        serializer = AssignTaskSerializer(data=request.data)
         if serializer.is_valid():
-            try:
-                serializer.assign_task(task)
-                return Response(
-                    {"message": "Task assigned successfully."},
-                    status=status.HTTP_200_OK,
-                )
-            except serializers.ValidationError as e:
-                return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
-
+            serializer.save()
+            return Response(
+                {"message": "Task assigned successfully."},
+                status=status.HTTP_200_OK,
+            )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -175,6 +198,14 @@ class DocumentViewSet(viewsets.ModelViewSet):
     queryset = Document.objects.all()
     serializer_class = DocumentSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if user.profile.role == UserRole.MANAGER.value:
+            return Document.objects.all()
+        else:
+            return Document.objects.filter(project__team_members__in=[user.id])
 
 
 class CommentViewSet(viewsets.ModelViewSet):
@@ -185,7 +216,7 @@ class CommentViewSet(viewsets.ModelViewSet):
 
 class NotificationListView(generics.ListAPIView):
     serializer_class = NotificationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return Notification.objects.filter(user=self.request.user)
@@ -193,7 +224,7 @@ class NotificationListView(generics.ListAPIView):
 
 class MarkNotificationReadView(generics.UpdateAPIView):
     serializer_class = NotificationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_object(self):
         return generics.get_object_or_404(

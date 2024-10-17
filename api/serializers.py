@@ -11,6 +11,7 @@ from .models import (
     Notification,
 )
 from django.conf import settings
+from rest_framework.exceptions import ValidationError
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -82,6 +83,8 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         user = self.context["request"].user
+        if user.profile.role != UserRole.MANAGER.value:
+            raise serializers.ValidationError("Only managers can create projects.")
         validated_data["created_by"] = user
         return super().create(validated_data)
 
@@ -127,26 +130,35 @@ class TaskSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 
-class AssignTaskSerializer(serializers.Serializer):
+class AssignTaskSerializer(serializers.ModelSerializer):
     team_member_id = serializers.IntegerField()
 
-    def validate_team_member_id(self, value):
+    class Meta:
+        model = Task
+        fields = ["team_member_id"]
+
+    def validate_assignee_id(self, value):
         if not Profile.objects.filter(id=value).exists():
             raise serializers.ValidationError("Invalid team member ID.")
         return value
 
-    def assign_task(self, task):
-        team_member_id = self.validated_data["team_member_id"]
-        team_member_profile = Profile.objects.get(id=team_member_id)
+    def update(self, instance, validated_data):
+        user = self.context["request"].user
+        assignee_id = validated_data.get("team_member_id")
 
-        if not task.project.team_members.filter(id=team_member_profile.id).exists():
+        if user.profile.role != UserRole.MANAGER.value:
+            raise serializers.ValidationError("Only managers can assign tasks.")
+
+        assignee_profile = Profile.objects.get(id=assignee_id)
+
+        if not instance.project.team_members.filter(id=assignee_profile.id).exists():
             raise serializers.ValidationError(
-                "The team member is not part of the project."
+                "The selected team member is not part of this project."
             )
 
-        task.assignee = team_member_profile
-        task.save()
-        return task
+        instance.assignee = assignee_profile
+        instance.save()
+        return instance
 
 
 class DocumentSerializer(serializers.ModelSerializer):
@@ -159,10 +171,10 @@ class DocumentSerializer(serializers.ModelSerializer):
             "version",
             "project",
         ]
-        read_only_fields = []
 
     def create(self, validated_data):
         user = self.context["request"].user
+
         if user.profile.role not in [UserRole.MANAGER.value, UserRole.QA.value]:
             raise serializers.ValidationError(
                 "You don't have permission to upload documents."
@@ -173,6 +185,7 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         user = self.context["request"].user
+
         if user.profile.role not in [UserRole.MANAGER.value, UserRole.QA.value]:
             raise serializers.ValidationError(
                 "You don't have permission to update documents."
@@ -180,9 +193,17 @@ class DocumentSerializer(serializers.ModelSerializer):
 
         return super().update(instance, validated_data)
 
+    # def delete(self):
+    #     user = self.context["request"].user
+
+    #     if user.profile.role != UserRole.MANAGER.value:
+    #         raise serializers.ValidationError("Only managers can delete documents.")
+
+    #     self.instance.delete()
+
 
 class CommentSerializer(serializers.ModelSerializer):
-    author = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    author = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = Comment

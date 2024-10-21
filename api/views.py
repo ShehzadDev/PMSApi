@@ -6,6 +6,8 @@ from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from .enums import UserRole
+from django.contrib.auth.models import User
+
 from .models import (
     Task,
     Profile,
@@ -87,10 +89,8 @@ class Register(APIView):
                 },
                 status=status.HTTP_201_CREATED,
             )
-        return Response(
-            {"error": "Only managers can delete projects."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserProfileView(APIView):
@@ -219,6 +219,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["put"], permission_classes=[IsAuthenticated])
     def assign(self, request, pk=None):
         task = self.get_object()
+        team_member_id = request.data.get("team_member_id")
 
         if request.user.profile.role != UserRole.MANAGER.value:
             return Response(
@@ -226,13 +227,78 @@ class TaskViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        serializer = self.get_serializer(task, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
+        if not team_member_id:
             return Response(
-                {"message": "Task assigned successfully."}, status=status.HTTP_200_OK
+                {"error": "Team member ID is required."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            team_member = User.objects.get(id=team_member_id)
+
+            assignee_profile = team_member.profile
+        except User.DoesNotExist:
+            return Response(
+                {"error": "Invalid team member selected."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not task.project.team_members.filter(id=team_member_id).exists():
+            task.project.team_members.add(team_member)
+
+        task.assignee = assignee_profile
+        task.save()
+
+        return Response(
+            {"message": "Task assigned successfully."}, status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=["put"], permission_classes=[IsAuthenticated])
+    def unassign(self, request, pk=None):
+        task = self.get_object()
+        user = request.user
+
+        if user.profile.role != UserRole.MANAGER.value:
+            return Response(
+                {"error": "Only managers can unassign tasks."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        team_member_id = request.data.get("team_member_id")
+
+        if not team_member_id:
+            return Response(
+                {"error": "Team member ID is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            assignee_profile = Profile.objects.get(id=team_member_id)
+        except Profile.DoesNotExist:
+            return Response(
+                {"error": "Invalid team member selected."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if task.assignee != assignee_profile:
+            return Response(
+                {"error": "The specified team member is not assigned to this task."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        task.assignee = None
+        task.save()
+        if not Task.objects.filter(
+            assignee=assignee_profile, project=task.project
+        ).exists():
+            task.project.team_members.remove(assignee_profile.user)
+
+        return Response(
+            {
+                "message": "Task unassigned successfully and team member removed from project if no other tasks are assigned."
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class DocumentViewSet(viewsets.ModelViewSet):

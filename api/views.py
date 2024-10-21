@@ -2,7 +2,6 @@ from rest_framework import status, viewsets, permissions, generics, serializers
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.views import APIView
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -22,7 +21,6 @@ from .serializers import (
     TaskSerializer,
     DocumentSerializer,
     CommentSerializer,
-    AssignTaskSerializer,
     UserViewSerializer,
     TimelineEventSerializer,
     NotificationSerializer,
@@ -89,7 +87,10 @@ class Register(APIView):
                 },
                 status=status.HTTP_201_CREATED,
             )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"error": "Only managers can delete projects."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
 
 class UserProfileView(APIView):
@@ -113,49 +114,53 @@ class ProjectViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if user.profile.role == UserRole.MANAGER.value:
-            return Project.objects.all()
+            return self.queryset
         else:
-            return Project.objects.filter(team_members=user)
+            return self.queryset.filter(team_members=user)
 
-    def perform_destroy(self, instance):
-        user = self.request.user
+    def create(self, request):
+        user = request.user
         if user.profile.role != UserRole.MANAGER.value:
-            raise PermissionDenied("Only managers can delete projects.")
-        instance.delete()
-
-
-class TimelineEventListView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = TimelineEventSerializer
-
-    def get_queryset(self):
-        user = self.request.user
-        if user.profile.role == "manager":
-            return TimelineEvent.objects.all().order_by("created_at")
-        return TimelineEvent.objects.filter(project__team_members=user).order_by(
-            "created_at"
-        )
-
-
-class TimelineEventDetailView(generics.ListAPIView):
-    permission_classes = [IsAuthenticated]
-    serializer_class = TimelineEventSerializer
-
-    def get_queryset(self):
-        project_id = self.kwargs["project_id"]
-        user = self.request.user
-
-        if (
-            user.profile.role == "manager"
-            or Project.objects.filter(id=project_id, team_members=user).exists()
-        ):
-            return TimelineEvent.objects.filter(project_id=project_id).order_by(
-                "created_at"
+            return Response(
+                {"error": "Only managers can create projects."},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
-        raise PermissionDenied(
-            detail="You do not have permission to view this project's timeline."
+        serializer = ProjectSerializer(data=request.data, context={"request": request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, pk=None):
+        user = request.user
+        project = self.get_object()
+        serializer = ProjectSerializer(
+            project, data=request.data, context={"request": request}
         )
+        if user.profile.role != UserRole.MANAGER.value:
+            return Response(
+                {"error": "Only managers can update projects."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, pk=None):
+        user = request.user
+        if user.profile.role != UserRole.MANAGER.value:
+            return Response(
+                {"error": "Only managers can delete projects."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        project = self.get_object()
+        project.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TaskViewSet(viewsets.ModelViewSet):
@@ -167,29 +172,65 @@ class TaskViewSet(viewsets.ModelViewSet):
         user = self.request.user
         user_profile = user.profile
 
-        if user_profile.role in [UserRole.MANAGER.value, UserRole.QA.value]:
-            return Task.objects.all()
+        if user_profile.role == UserRole.MANAGER.value:
+            return self.queryset
+        return self.queryset.filter(assignee=user_profile)
 
-        return Task.objects.filter(assignee=user_profile)
-
-    def perform_destroy(self, instance):
-        user = self.request.user
+    def create(self, request):
+        user = request.user
         if user.profile.role != UserRole.MANAGER.value:
-            raise PermissionDenied("Only managers can delete tasks.")
-        instance.delete()
+            return Response(
+                {"error": "Only managers can create tasks."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, pk=None):
+        user = request.user
+        task = self.get_object()
+
+        if user.profile.role != UserRole.MANAGER.value:
+            return Response(
+                {"error": "Only managers can update tasks."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = self.get_serializer(task, data=request.data, partial=True)
+        if serializer.is_valid(raise_exception=True):
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        def perform_destroy(self, instance):
+            user = self.request.user
+            if user.profile.role != UserRole.MANAGER.value:
+                return Response(
+                    {"error": "Only managers can delete tasks."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            instance.delete()
+
+    @action(detail=True, methods=["put"], permission_classes=[IsAuthenticated])
     def assign(self, request, pk=None):
         task = self.get_object()
-        serializer = AssignTaskSerializer(
-            task, data=request.data, context={"request": request}
-        )
 
+        if request.user.profile.role != UserRole.MANAGER.value:
+            return Response(
+                {"error": "Only managers can assign tasks."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = self.get_serializer(task, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(
-                {"message": "Task assigned successfully."},
-                status=status.HTTP_200_OK,
+                {"message": "Task assigned successfully."}, status=status.HTTP_200_OK
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -201,11 +242,49 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-
         if user.profile.role == UserRole.MANAGER.value:
-            return Document.objects.all()
+            return self.queryset
         else:
-            return Document.objects.filter(project__team_members__in=[user.id])
+            return self.queryset.filter(project__team_members=user)
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        if user.profile.role != UserRole.MANAGER.value:
+            return Response(
+                {"error": "Only managers can create documents."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        user = request.user
+        if user.profile.role != UserRole.MANAGER.value:
+            return Response(
+                {"error": "Only managers can update documents."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        document = self.get_object()
+        serializer = self.get_serializer(document, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def destroy(self, request, *args, **kwargs):
+        user = request.user
+        if user.profile.role != UserRole.MANAGER.value:
+            return Response(
+                {"error": "Only managers can delete documents."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        document = self.get_object()
+        document.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class CommentViewSet(viewsets.ModelViewSet):
@@ -213,24 +292,112 @@ class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        user = self.request.user
+        if user.profile.role == UserRole.MANAGER.value:
+            return self.queryset
+        else:
+            return self.queryset.filter(author=user)
 
-class NotificationListView(generics.ListAPIView):
+    def create(self, request):
+        user = request.user
+        serializer = CommentSerializer(data=request.data)
+
+        if serializer.is_valid():
+            serializer.save(author=user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, pk=None):
+        user = request.user
+        comment = self.get_object()
+        serializer = CommentSerializer(
+            comment, data=request.data, context={"request": request}
+        )
+        if user.profile.role != UserRole.MANAGER.value:
+            return Response(
+                {"error": "Only managers can update comments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, pk=None):
+        user = request.user
+        if user.profile.role != UserRole.MANAGER.value:
+            return Response(
+                {"error": "Only managers can delete comments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        comment = self.get_object()
+        comment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class TimelineEventView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = TimelineEventSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.profile.role == UserRole.MANAGER.value:
+            return TimelineEvent.objects.all().order_by("created_at")
+        return TimelineEvent.objects.filter(project__team_members=user).order_by(
+            "id", "created_at"
+        )
+
+    def get(self, request, project_id=None, *args, **kwargs):
+        if project_id:
+            if (
+                request.user.profile.role == UserRole.MANAGER.value
+                or Project.objects.filter(
+                    id=project_id, team_members=request.user
+                ).exists()
+            ):
+                queryset = TimelineEvent.objects.filter(project_id=project_id).order_by(
+                    "created_at"
+                )
+                serializer = self.get_serializer(queryset, many=True)
+                return Response(serializer.data)
+            return Response(
+                {"error": "You do not have permission to view this timeline."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        else:
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
+
+
+class NotificationViewSet(viewsets.GenericViewSet):
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return Notification.objects.filter(user=self.request.user)
 
+    def list(self, request):
+        notifications = self.get_queryset()
+        serializer = self.get_serializer(notifications, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-class MarkNotificationReadView(generics.UpdateAPIView):
-    serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated]
+    @action(
+        detail=True,
+        methods=["put"],
+        url_path="mark_read",
+        url_name="mark-notification-read",
+    )
+    def mark_read(self, request, pk=None):
+        notification = self.get_object(pk)
+        notification.is_read = True
+        notification.save()
+        serializer = self.get_serializer(notification)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def get_object(self):
-        return generics.get_object_or_404(
-            Notification, id=self.kwargs["notification_id"], user=self.request.user
-        )
-
-    def perform_update(self, serializer):
-        notification = self.get_object()
-        serializer.update(notification, {})
+    def get_object(self, pk):
+        return generics.get_object_or_404(Notification, id=pk, user=self.request.user)
